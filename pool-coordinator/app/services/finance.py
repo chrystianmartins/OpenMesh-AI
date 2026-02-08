@@ -41,7 +41,7 @@ def _get_or_create_account(db: Session, *, owner_type: OwnerType, owner_id: int,
     return account
 
 
-def _payload_units(payload: dict[str, object]) -> int:
+def estimate_payload_units(payload: dict[str, object]) -> int:
     payload_chars = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     raw_units = (Decimal(payload_chars) / Decimal("1000")).quantize(Decimal("1"), rounding=ROUND_CEILING)
     return max(1, int(raw_units))
@@ -106,7 +106,7 @@ def apply_job_verification_accounting(db: Session, *, assignment: Assignment, re
     pool_settings = db.get(PoolSettings, 1)
     pool_fee_bps = pool_settings.pool_fee_bps if pool_settings is not None else 0
 
-    units = _payload_units(assignment.job.payload)
+    units = estimate_payload_units(assignment.job.payload)
     unit_cost_tokens = pricing_rule.unit_cost_tokens if pricing_rule.unit_cost_tokens is not None else Decimal("0")
     cost = (Decimal(units) * unit_cost_tokens).quantize(Decimal("0.00000001"))
     pool_fee = (cost * Decimal(pool_fee_bps) / Decimal(10_000)).quantize(Decimal("0.00000001"))
