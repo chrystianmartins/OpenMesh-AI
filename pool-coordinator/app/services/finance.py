@@ -164,6 +164,38 @@ def apply_job_verification_accounting(db: Session, *, assignment: Assignment, re
     )
 
 
+
+
+def record_interpool_fee_placeholder(
+    db: Session,
+    *,
+    job_id: int | None,
+    peer_id: str,
+    direction: str,
+    details: dict[str, object] | None = None,
+) -> None:
+    pool_account = _get_or_create_account(
+        db,
+        owner_type=OwnerType.SYSTEM,
+        owner_id=POOL_ACCOUNT_OWNER_ID,
+        currency=TOKEN_CURRENCY,
+    )
+
+    payload: dict[str, object] = {"peer_id": peer_id, "direction": direction}
+    if details:
+        payload.update(details)
+
+    db.add(
+        LedgerEntry(
+            account_id=pool_account.id,
+            job_id=job_id,
+            assignment_id=None,
+            amount=Decimal("0"),
+            entry_type="interpool_fee",
+            details=payload,
+        )
+    )
+
 def get_finance_summary(db: Session) -> FinanceSummary:
     total_accounts = int(db.scalar(select(func.count()).select_from(Account)) or 0)
     total_ledger_entries = int(db.scalar(select(func.count()).select_from(LedgerEntry)) or 0)
