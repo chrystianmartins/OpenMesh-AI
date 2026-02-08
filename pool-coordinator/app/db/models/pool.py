@@ -24,6 +24,7 @@ class PoolSettings(TimestampMixin, Base):
     audit_job_rate_bps: Mapped[int] = mapped_column(nullable=False, server_default="0")
     fraud_ban_threshold: Mapped[int] = mapped_column(nullable=False, server_default="2")
     embed_similarity_threshold: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False, server_default="0.985")
+    pool_fee_bps: Mapped[int] = mapped_column(nullable=False, server_default="1000")
 
 
 class PricingRule(TimestampMixin, Base):
@@ -36,6 +37,7 @@ class PricingRule(TimestampMixin, Base):
         nullable=False,
     )
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    unit_cost_tokens: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, server_default="0")
     minimum_charge: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
     effective_from: Mapped[datetime] = mapped_column(
