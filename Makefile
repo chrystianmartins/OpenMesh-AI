@@ -1,4 +1,4 @@
-.PHONY: up down logs fmt lint test migrate seed
+.PHONY: up down logs dbshell reset fmt lint test migrate seed
 
 up:
 	docker compose up -d --build
@@ -7,7 +7,14 @@ down:
 	docker compose down
 
 logs:
-	docker compose logs -f
+	docker compose logs -f pool-gateway pool-coordinator worker postgres redis
+
+dbshell:
+	docker compose exec postgres psql -U openmesh -d openmesh
+
+reset:
+	docker compose down -v --remove-orphans
+	docker compose up -d --build
 
 fmt:
 	cd pool-coordinator && python -m ruff format .

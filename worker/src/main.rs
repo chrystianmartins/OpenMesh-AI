@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use clap::{Parser, Subcommand};
@@ -13,7 +13,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use tracing::{error, info, warn};
+use tracing::{error, info, info_span, warn};
 
 #[derive(Debug, Parser)]
 #[command(name = "openmesh-worker", version, about = "OpenMesh-AI worker CLI")]
@@ -241,6 +241,7 @@ fn poll_job(cfg: &Config) -> Result<Value, String> {
     let job = serde_json::json!({
         "job_id": "dummy-001",
         "payload": {
+            "request_id": format!("wrk-{}", SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)),
             "action": "EMBED",
             "input": {"text": "openmesh worker example payload"}
         }
@@ -258,7 +259,13 @@ fn execute_job(job: &Value, engine: &mut PythonEngineExecutor) -> Result<Value, 
         .get("payload")
         .cloned()
         .ok_or_else(|| "payload missing".to_string())?;
+    let request_id = payload
+        .get("request_id")
+        .and_then(Value::as_str)
+        .unwrap_or("-")
+        .to_string();
 
+    let _span = info_span!("worker_job", request_id = %request_id, job_id = %job_id).entered();
     let engine_response = engine.execute(&payload)?;
 
     let mut metrics_json = serde_json::Map::new();
@@ -273,6 +280,10 @@ fn execute_job(job: &Value, engine: &mut PythonEngineExecutor) -> Result<Value, 
     metrics_json.insert(
         "device".to_string(),
         serde_json::Value::String(engine_response.device),
+    );
+    metrics_json.insert(
+        "request_id".to_string(),
+        serde_json::Value::String(request_id),
     );
 
     let result = serde_json::json!({
