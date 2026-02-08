@@ -57,6 +57,30 @@ def test_embed_success() -> None:
     assert response.json() == {"job_id": "job-1", "output": [0.1, 0.2]}
 
 
+def test_embed_enforces_text_max_length() -> None:
+    with TestClient(app) as client:
+        response = client.post("/v1/embed", headers={"X-API-Key": "dev-key"}, json={"text": "a" * 20_001})
+
+    assert response.status_code == 422
+
+
+def test_rank_enforces_texts_bounds() -> None:
+    with TestClient(app) as client:
+        too_many = client.post(
+            "/v1/rank",
+            headers={"X-API-Key": "dev-key"},
+            json={"query": "q", "texts": ["a"] * 33},
+        )
+        too_large_item = client.post(
+            "/v1/rank",
+            headers={"X-API-Key": "dev-key"},
+            json={"query": "q", "texts": ["a" * 10_001]},
+        )
+
+    assert too_many.status_code == 422
+    assert too_large_item.status_code == 422
+
+
 def test_insufficient_balance_returns_402() -> None:
     with TestClient(app) as client:
         app.state.coordinator_client = FakeCoordinatorClient(
@@ -91,3 +115,22 @@ def test_timeout_triggers_cancel_and_returns_503() -> None:
 
     assert response.status_code == 503
     assert ("POST", "/internal/jobs/job-timeout/cancel") in fake.calls
+
+
+def test_rate_limit_by_api_key_and_ip(monkeypatch) -> None:
+    monkeypatch.setenv("GATEWAY_API_KEYS", "client-a:key-a,client-b:key-b")
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE_API_KEY", "2")
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE_IP", "1")
+
+    with TestClient(app) as client:
+        app.state.coordinator_client = FakeCoordinatorClient(
+            {
+                ("POST", "/internal/jobs/create"): [FakeResponse(201, {"job_id": "job-1"})],
+                ("GET", "/internal/jobs/job-1"): [FakeResponse(200, {"status": "verified", "output": [1]})],
+            }
+        )
+        ok = client.post("/v1/embed", headers={"X-API-Key": "key-a"}, json={"text": "first"})
+        limited_ip = client.post("/v1/embed", headers={"X-API-Key": "key-b"}, json={"text": "second"})
+
+    assert ok.status_code == 200
+    assert limited_ip.status_code == 429
