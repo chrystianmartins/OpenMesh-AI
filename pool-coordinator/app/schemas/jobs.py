@@ -60,9 +60,13 @@ class JobSubmitRequest(StrictBaseModel):
                 raise ValueError(f"output exceeds max size of {MAX_JSON_PAYLOAD_CHARS} characters")
 
         if self.metrics_json is not None:
-            metrics_size = len(json.dumps(self.metrics_json, ensure_ascii=False, separators=(",", ":")))
+            metrics_size = len(
+                json.dumps(self.metrics_json, ensure_ascii=False, separators=(",", ":"))
+            )
             if metrics_size > MAX_JSON_PAYLOAD_CHARS:
-                raise ValueError(f"metrics_json exceeds max size of {MAX_JSON_PAYLOAD_CHARS} characters")
+                raise ValueError(
+                    f"metrics_json exceeds max size of {MAX_JSON_PAYLOAD_CHARS} characters"
+                )
 
         return self
 
@@ -76,6 +80,7 @@ class JobSubmitResponse(BaseModel):
 class InternalJobCreateRequest(StrictBaseModel):
     job_type: JobType
     payload: dict[str, Any]
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     created_by_user_id: int | None = None
     priority: int = Field(default=0, ge=0, le=100)
     price_multiplier: Decimal = Field(default=Decimal("1.0"), gt=0)
