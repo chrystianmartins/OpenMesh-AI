@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import secrets
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_db, require_roles
@@ -25,8 +25,10 @@ from app.schemas.auth import (
     RegisterResponse,
     TokenResponse,
 )
+from app.services.api_keys import generate_api_key_material
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -93,12 +95,45 @@ def create_api_key(
     current_user: User = Depends(require_roles(Role.CLIENT)),
     db: Session = Depends(get_db),
 ) -> ApiKeyResponse:
-    raw_key = f"omk_{secrets.token_urlsafe(32)}"
-    hashed_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-    key_row = ApiKey(user_id=current_user.id, name=payload.name, key_hash=hashed_key, revoked=False)
+    key_material = generate_api_key_material()
+    key_row = ApiKey(
+        user_id=current_user.id,
+        name=payload.name,
+        prefix=key_material.prefix,
+        key_hash=key_material.key_hash,
+        revoked=False,
+    )
 
     db.add(key_row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning(
+            "API key creation conflict",
+            extra={"user_id": current_user.id, "key_name": payload.name},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to create API key. Please retry.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(
+            "Database error while creating API key",
+            extra={"user_id": current_user.id, "key_name": payload.name},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to create API key.",
+        ) from exc
+
     db.refresh(key_row)
 
-    return ApiKeyResponse(id=key_row.id, name=key_row.name, key=raw_key, created_at=key_row.created_at)
+    return ApiKeyResponse(
+        id=key_row.id,
+        name=key_row.name,
+        prefix=key_row.prefix,
+        key=key_material.raw_key,
+        created_at=key_row.created_at,
+    )

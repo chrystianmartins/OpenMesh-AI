@@ -37,10 +37,14 @@ class CreateApiKeyRequest(BaseModel):
     name: str = Field(min_length=3, max_length=80)
 
 
-class ApiKeyResponse(BaseModel):
-    id: int
+class ApiKeyIdentifier(BaseModel):
     name: str
-    key: str
+    prefix: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApiKeyResponse(ApiKeyIdentifier):
+    id: int
+    key: str
