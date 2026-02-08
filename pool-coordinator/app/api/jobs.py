@@ -12,7 +12,7 @@ from app.core.protocol_crypto import ProtocolCryptoError, canonical_json, verify
 from app.db.models.auth import User
 from app.db.models.enums import AssignmentStatus, JobStatus, Role, WorkerStatus
 from app.db.models.jobs import Assignment, Result
-from app.db.models.workers import Worker
+from app.db.models.workers import Worker, WorkerHeartbeat
 from app.schemas.jobs import (
     InternalJobCreateRequest,
     InternalJobCreateResponse,
@@ -69,6 +69,7 @@ def heartbeat_worker(
     now = datetime.now(UTC)
     worker.last_seen_at = now
     worker.status = WorkerStatus.ONLINE
+    db.add(WorkerHeartbeat(worker_id=worker.id, recorded_at=now))
     db.commit()
     return WorkerHeartbeatResponse(worker_id=worker.id, last_seen_at=now)
 

@@ -36,6 +36,10 @@ class Worker(TimestampMixin, Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    heartbeats: Mapped[list[WorkerHeartbeat]] = relationship(
+        back_populates="worker",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("ix_workers_owner_user_id", "owner_user_id"),
@@ -65,3 +69,18 @@ class WorkerSettings(TimestampMixin, Base):
     worker: Mapped[Worker] = relationship(back_populates="settings")
 
     __table_args__ = (Index("ix_worker_settings_worker_id", "worker_id"),)
+
+
+class WorkerHeartbeat(TimestampMixin, Base):
+    __tablename__ = "worker_heartbeats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id", ondelete="CASCADE"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    worker: Mapped[Worker] = relationship(back_populates="heartbeats")
+
+    __table_args__ = (
+        Index("ix_worker_heartbeats_worker_id", "worker_id"),
+        Index("ix_worker_heartbeats_recorded_at", "recorded_at"),
+    )

@@ -12,9 +12,11 @@ from app.db.models.auth import User
 from app.db.models.enums import AssignmentStatus, JobStatus, Role
 from app.db.models.jobs import Assignment, Job
 from app.db.models.workers import Worker, WorkerSettings
+from app.schemas.admin import AdminEmissionRunResponse, AdminEmissionStatusResponse
 from app.schemas.jobs import AdminEnqueueDemoRequest, AdminJobsResponse, JobAdminItem
 from app.schemas.me import AdminFinanceSummaryResponse
 from app.schemas.workers import AdminWorkerItem, AdminWorkersResponse, LeaderboardItem, LeaderboardResponse
+from app.services.emission import get_daily_emission_status, run_daily_emission
 from app.services.finance import get_finance_summary
 from app.services.job_dispatcher import create_queued_job
 
@@ -148,4 +150,28 @@ def leaderboard(
             )
             for row in rows
         ]
+    )
+
+
+@router.get("/admin/emission/status", response_model=AdminEmissionStatusResponse)
+def admin_emission_status(
+    _: User = Depends(require_roles(Role.WORKER_OWNER)),
+    db: Session = Depends(get_db),
+) -> AdminEmissionStatusResponse:
+    payload = get_daily_emission_status(db)
+    return AdminEmissionStatusResponse(**payload)
+
+
+@router.post("/admin/emission/run-now", response_model=AdminEmissionRunResponse)
+def admin_emission_run_now(
+    _: User = Depends(require_roles(Role.WORKER_OWNER)),
+    db: Session = Depends(get_db),
+) -> AdminEmissionRunResponse:
+    result = run_daily_emission(db)
+    db.commit()
+    return AdminEmissionRunResponse(
+        target_day=result.target_day,
+        cap_tokens=result.cap_tokens,
+        emitted_tokens=result.emitted_tokens,
+        workers_rewarded=result.workers_rewarded,
     )
