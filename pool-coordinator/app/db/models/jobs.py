@@ -4,11 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, Enum as SqlEnum
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.models.enums import AssignmentStatus, JobStatus, JobType
+from app.db.models.enums import AssignmentStatus, JobStatus, JobType, VerificationStatus
 from app.db.models.mixins import TimestampMixin
 from app.db.session import Base
 
@@ -32,6 +32,8 @@ class Job(TimestampMixin, Base):
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    canonical_expected_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_audit_job: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     assignments: Mapped[list[Assignment]] = relationship(back_populates="job", cascade="all, delete-orphan")
 
@@ -39,6 +41,7 @@ class Job(TimestampMixin, Base):
         Index("ix_jobs_status", "status"),
         Index("ix_jobs_job_type", "job_type"),
         Index("ix_jobs_priority", "priority"),
+        Index("ix_jobs_is_audit_job", "is_audit_job"),
     )
 
 
@@ -63,6 +66,7 @@ class Assignment(TimestampMixin, Base):
     nonce: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
 
     job: Mapped[Job] = relationship(back_populates="assignments")
+    worker = relationship("Worker")
     result: Mapped[Result | None] = relationship(
         back_populates="assignment",
         cascade="all, delete-orphan",
@@ -92,6 +96,17 @@ class Result(TimestampMixin, Base):
     output_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     signature: Mapped[str | None] = mapped_column(Text, nullable=True)
     metrics_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    verification_status: Mapped[VerificationStatus] = mapped_column(
+        SqlEnum(
+            VerificationStatus,
+            name="verification_status_enum",
+            native_enum=False,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        server_default=VerificationStatus.PENDING.value,
+    )
+    verification_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
 
     assignment: Mapped[Assignment] = relationship(back_populates="result")
 

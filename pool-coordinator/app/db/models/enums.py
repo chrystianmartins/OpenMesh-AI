@@ -11,6 +11,7 @@ class WorkerStatus(str, Enum):
     OFFLINE = "offline"
     DRAINING = "draining"
     MAINTENANCE = "maintenance"
+    BANNED = "banned"
 
 
 class JobType(str, Enum):
@@ -39,3 +40,10 @@ class OwnerType(str, Enum):
     USER = "user"
     WORKER = "worker"
     SYSTEM = "system"
+
+
+class VerificationStatus(str, Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    DISPUTED = "disputed"
+    REJECTED = "rejected"

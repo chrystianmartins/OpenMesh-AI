@@ -15,6 +15,7 @@ from app.db.models.jobs import Assignment, Result
 from app.db.models.workers import Worker
 from app.schemas.jobs import JobPollRequest, JobPollResponse, JobSubmitRequest, JobSubmitResponse
 from app.schemas.workers import WorkerHeartbeatRequest, WorkerHeartbeatResponse
+from app.services.verification import process_submission_verification
 
 router = APIRouter(tags=["jobs"])
 
@@ -100,7 +101,7 @@ def submit_job(
 
     assignment = db.scalar(
         select(Assignment)
-        .options(joinedload(Assignment.result))
+        .options(joinedload(Assignment.result), joinedload(Assignment.job), joinedload(Assignment.worker))
         .where(Assignment.id == payload.assignment_id, Assignment.worker_id == worker.id)
         .with_for_update()
     )
@@ -120,17 +121,19 @@ def submit_job(
     assignment.status = AssignmentStatus.COMPLETED if payload.error_message is None else AssignmentStatus.FAILED
     assignment.finished_at = finished_at
 
-    db.add(
-        Result(
-            assignment_id=assignment.id,
-            output=payload.output,
-            error_message=payload.error_message,
-            artifact_uri=payload.artifact_uri,
-            output_hash=payload.output_hash,
-            signature=payload.signature,
-            metrics_json=payload.metrics_json,
-        )
+    result = Result(
+        assignment_id=assignment.id,
+        output=payload.output,
+        error_message=payload.error_message,
+        artifact_uri=payload.artifact_uri,
+        output_hash=payload.output_hash,
+        signature=payload.signature,
+        metrics_json=payload.metrics_json,
     )
+    db.add(result)
+
+    process_submission_verification(db, assignment, result)
+
     try:
         db.commit()
     except OperationalError as exc:

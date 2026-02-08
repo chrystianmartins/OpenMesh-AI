@@ -20,6 +20,10 @@ class PoolSettings(TimestampMixin, Base):
     assignment_retry_limit: Mapped[int] = mapped_column(nullable=False, server_default="3")
     cleanup_interval_seconds: Mapped[int] = mapped_column(nullable=False, server_default="300")
     enable_auto_scaling: Mapped[bool] = mapped_column(nullable=False, server_default="true")
+    audit_interval_jobs: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    audit_job_rate_bps: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    fraud_ban_threshold: Mapped[int] = mapped_column(nullable=False, server_default="2")
+    embed_similarity_threshold: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False, server_default="0.985")
 
 
 class PricingRule(TimestampMixin, Base):
