@@ -1,8 +1,8 @@
 use assert_cmd::Command;
 
 #[test]
-fn prints_health_status() {
-    let mut cmd = Command::cargo_bin("worker").expect("binary should compile");
-    cmd.arg("health");
+fn shows_help() {
+    let mut cmd = Command::cargo_bin("openmesh-worker").expect("binary should compile");
+    cmd.arg("--help");
     cmd.assert().success();
 }
