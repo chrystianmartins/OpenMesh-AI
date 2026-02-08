@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/openmesh"
+    admin_email: str = "admin@openmesh.local"
+    admin_password: str = "change-me"
 
     model_config = SettingsConfigDict(
         env_file=".env",
