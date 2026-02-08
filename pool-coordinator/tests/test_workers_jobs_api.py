@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.protocol_crypto import canonical_json
 from app.db.models.jobs import Assignment, Job, Result
 from app.db.models.workers import Worker
 from app.db.models.enums import AssignmentStatus, JobStatus, JobType, Role, WorkerStatus
@@ -17,7 +21,7 @@ def test_register_worker_sets_owner_to_current_user(client: TestClient, create_u
 
     response = client.post(
         "/workers/register",
-        json={"name": "worker-owner-a", "region": "sa-east-1", "public_key": "c2ln"},
+        json={"name": "worker-owner-a", "region": "sa-east-1", "public_key": "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE"},
         headers=headers,
     )
 
@@ -102,7 +106,17 @@ def test_submit_validates_nonce_signature_and_replay(
     db_session: Session,
 ) -> None:
     owner = create_user(email="submit-owner@test.local", role=Role.WORKER_OWNER)
-    worker = Worker(name="worker-submit", owner_user_id=owner.id, status=WorkerStatus.OFFLINE)
+    private_key = Ed25519PrivateKey.generate()
+    public_key_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    worker = Worker(
+        name="worker-submit",
+        owner_user_id=owner.id,
+        status=WorkerStatus.OFFLINE,
+        public_key=base64.urlsafe_b64encode(public_key_bytes).decode().rstrip("="),
+    )
     job = Job(
         created_by_user_id=owner.id,
         job_type=JobType.INFERENCE,
@@ -132,6 +146,7 @@ def test_submit_validates_nonce_signature_and_replay(
             "nonce": "wrong",
             "signature": "c2ln",
             "output": {"ok": True},
+            "output_hash": "hash-1",
         },
         headers=headers,
     )
@@ -145,10 +160,20 @@ def test_submit_validates_nonce_signature_and_replay(
             "nonce": assignment.nonce,
             "signature": "@@@",
             "output": {"ok": True},
+            "output_hash": "hash-1",
         },
         headers=headers,
     )
     assert invalid_signature.status_code == 400
+
+    signed_message = canonical_json(
+        {
+            "assignment_id": assignment.id,
+            "nonce": assignment.nonce,
+            "output_hash": "hash-1",
+        }
+    )
+    signature = base64.urlsafe_b64encode(private_key.sign(signed_message)).decode().rstrip("=")
 
     ok_submit = client.post(
         "/jobs/submit",
@@ -156,8 +181,9 @@ def test_submit_validates_nonce_signature_and_replay(
             "worker_id": worker.id,
             "assignment_id": assignment.id,
             "nonce": assignment.nonce,
-            "signature": "c2lnbmF0dXJl",
+            "signature": signature,
             "output": {"ok": True},
+            "output_hash": "hash-1",
         },
         headers=headers,
     )
@@ -169,8 +195,9 @@ def test_submit_validates_nonce_signature_and_replay(
             "worker_id": worker.id,
             "assignment_id": assignment.id,
             "nonce": assignment.nonce,
-            "signature": "c2lnbmF0dXJl",
+            "signature": signature,
             "output": {"ok": True},
+            "output_hash": "hash-1",
         },
         headers=headers,
     )
