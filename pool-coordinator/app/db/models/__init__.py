@@ -13,7 +13,7 @@ from app.db.models.enums import (
 )
 from app.db.models.jobs import Assignment, Job, Result
 from app.db.models.pool import PoolSettings, PricingRule
-from app.db.models.workers import Worker, WorkerSettings
+from app.db.models.workers import Worker, WorkerHeartbeat, WorkerSettings
 
 __all__ = [
     "Account",
@@ -31,6 +31,7 @@ __all__ = [
     "Role",
     "User",
     "Worker",
+    "WorkerHeartbeat",
     "WorkerSettings",
     "WorkerStatus",
     "VerificationStatus",

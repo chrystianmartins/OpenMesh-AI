@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.models.accounting import Account, LedgerEntry
 from app.db.models.enums import AssignmentStatus, JobStatus, JobType, OwnerType, Role, WorkerStatus
 from app.db.models.jobs import Assignment, Job
-from app.db.models.workers import Worker, WorkerSettings
+from app.db.models.workers import Worker, WorkerHeartbeat, WorkerSettings
 from app.services.job_dispatcher import assign_queued_jobs
 
 
@@ -162,3 +163,100 @@ def test_admin_endpoints_list_jobs_workers_and_leaderboard(
     leaderboard_response = client.get("/admin/leaderboard", headers=headers)
     assert leaderboard_response.status_code == 200
     assert leaderboard_response.json()["leaderboard"][0]["tokens_earned"] == "12.50000000"
+
+
+def test_daily_emission_partial_uptime_receives_proportional_tokens(
+    client: TestClient,
+    create_user,
+    auth_headers,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "daily_emission_base_tokens", 24.0)
+    monkeypatch.setattr(settings, "daily_emission_cap_tokens", 100.0)
+
+    owner = create_user(email="emission-owner@test.local", role=Role.WORKER_OWNER)
+    headers = auth_headers("emission-owner@test.local", "super-secret-password")
+
+    worker = Worker(
+        name="emission-worker",
+        owner_user_id=owner.id,
+        status=WorkerStatus.ONLINE,
+        specs_json={"reputation": 1.0},
+    )
+    db_session.add(worker)
+    db_session.flush()
+    db_session.add(WorkerSettings(worker_id=worker.id, heartbeat_timeout_seconds=3600, accept_new_assignments=True))
+
+    now = datetime.now(UTC)
+    db_session.add(WorkerHeartbeat(worker_id=worker.id, recorded_at=now - timedelta(hours=12)))
+    db_session.commit()
+
+    run_response = client.post("/admin/emission/run-now", headers=headers)
+    assert run_response.status_code == 200
+    payload = run_response.json()
+    assert payload["workers_rewarded"] == 1
+    emitted = Decimal(payload["emitted_tokens"])
+    assert Decimal("0.99") <= emitted <= Decimal("1.01")
+
+    emission_entry = db_session.scalar(select(LedgerEntry).where(LedgerEntry.entry_type == "daily_emission"))
+    assert emission_entry is not None
+    assert emission_entry.details is not None
+    assert emission_entry.details["reason"] == "daily_emission"
+
+    status_response = client.get("/admin/emission/status", headers=headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["run_completed"] is True
+
+
+def test_daily_emission_respects_daily_cap(
+    client: TestClient,
+    create_user,
+    auth_headers,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "daily_emission_base_tokens", 24.0)
+    monkeypatch.setattr(settings, "daily_emission_cap_tokens", 3.0)
+
+    owner_a = create_user(email="emission-a@test.local", role=Role.WORKER_OWNER)
+    owner_b = create_user(email="emission-b@test.local", role=Role.WORKER_OWNER)
+    headers = auth_headers("emission-a@test.local", "super-secret-password")
+
+    worker_a = Worker(
+        name="cap-worker-a",
+        owner_user_id=owner_a.id,
+        status=WorkerStatus.ONLINE,
+        specs_json={"reputation": 1.0},
+    )
+    worker_b = Worker(
+        name="cap-worker-b",
+        owner_user_id=owner_b.id,
+        status=WorkerStatus.ONLINE,
+        specs_json={"reputation": 1.0},
+    )
+    db_session.add_all([worker_a, worker_b])
+    db_session.flush()
+    db_session.add_all(
+        [
+            WorkerSettings(worker_id=worker_a.id, heartbeat_timeout_seconds=86400, accept_new_assignments=True),
+            WorkerSettings(worker_id=worker_b.id, heartbeat_timeout_seconds=86400, accept_new_assignments=True),
+        ]
+    )
+
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            WorkerHeartbeat(worker_id=worker_a.id, recorded_at=now - timedelta(hours=24)),
+            WorkerHeartbeat(worker_id=worker_b.id, recorded_at=now - timedelta(hours=24)),
+        ]
+    )
+    db_session.commit()
+
+    run_response = client.post("/admin/emission/run-now", headers=headers)
+    assert run_response.status_code == 200
+    assert run_response.json()["emitted_tokens"] == "3.00000000"
+
+    status_response = client.get("/admin/emission/status", headers=headers)
+    assert status_response.status_code == 200
+    assert Decimal(status_response.json()["remaining_tokens"]) == Decimal("0")

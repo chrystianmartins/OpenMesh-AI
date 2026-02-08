@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_minutes: int = 20160
+    daily_emission_base_tokens: float = 24.0
+    daily_emission_cap_tokens: float = 1000.0
+    daily_emission_cron_hour_utc: int = 0
+    daily_emission_cron_minute_utc: int = 0
 
     model_config = SettingsConfigDict(
         env_file=".env",
