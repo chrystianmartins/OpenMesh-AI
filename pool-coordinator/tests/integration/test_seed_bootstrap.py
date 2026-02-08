@@ -22,7 +22,7 @@ def test_seed_bootstrap_creates_admin_pool_settings_and_pricing_rules(
 
     admin_user = db_session.scalar(select(User).where(User.email == "bootstrap-admin@test.local"))
     assert admin_user is not None
-    assert admin_user.role.value == "admin"
+    assert admin_user.role.value == "worker_owner"
     assert admin_user.is_active is True
     assert admin_user.password_hash is not None
     assert not admin_user.password_hash.startswith("bootstrap-secret-password")

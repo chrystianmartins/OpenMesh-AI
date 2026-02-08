@@ -2,9 +2,6 @@ from enum import Enum
 
 
 class Role(str, Enum):
-    ADMIN = "admin"
-    OPERATOR = "operator"
-    USER = "user"
     CLIENT = "client"
     WORKER_OWNER = "worker_owner"
 

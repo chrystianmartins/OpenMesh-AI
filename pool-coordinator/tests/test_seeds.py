@@ -30,7 +30,7 @@ def test_seed_defaults_is_idempotent(monkeypatch) -> None:
         users = session.scalars(select(User)).all()
         assert len(users) == 1
         assert users[0].email == "admin@test.local"
-        assert users[0].role.value == "admin"
+        assert users[0].role.value == "worker_owner"
         assert users[0].password_hash is not None
         assert not users[0].password_hash.startswith("super-secret-password")
 
