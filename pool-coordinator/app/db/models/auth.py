@@ -20,6 +20,7 @@ class User(TimestampMixin, Base):
         server_default=Role.USER.value,
     )
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
