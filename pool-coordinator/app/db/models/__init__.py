@@ -8,6 +8,7 @@ from app.db.models.enums import (
     JobType,
     OwnerType,
     Role,
+    VerificationStatus,
     WorkerStatus,
 )
 from app.db.models.jobs import Assignment, Job, Result
@@ -32,4 +33,5 @@ __all__ = [
     "Worker",
     "WorkerSettings",
     "WorkerStatus",
+    "VerificationStatus",
 ]
