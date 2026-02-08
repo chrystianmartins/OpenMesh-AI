@@ -50,7 +50,7 @@ def test_basic_relations_and_minimum_domain_defaults(db_session: Session) -> Non
 
     assert job.created_by_user_id == user.id
     assert job.status.value == "queued"
-    assert assignment.status.value == "pending"
+    assert assignment.status.value == "assigned"
     assert assignment.job_id == job.id
     assert assignment.worker_id == worker.id
     assert result.assignment_id == assignment.id

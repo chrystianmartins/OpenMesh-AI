@@ -53,7 +53,7 @@ def poll_job(
         .options(joinedload(Assignment.job))
         .where(
             Assignment.worker_id == worker.id,
-            Assignment.status == AssignmentStatus.PENDING,
+            Assignment.status == AssignmentStatus.ASSIGNED,
         )
         .order_by(Assignment.assigned_at.asc())
     )
@@ -110,12 +110,11 @@ def submit_job(
     if assignment.nonce != payload.nonce:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid nonce")
 
-    if assignment.result is not None or assignment.status in {
-        AssignmentStatus.COMPLETED,
-        AssignmentStatus.FAILED,
-        AssignmentStatus.CANCELED,
-    }:
+    if assignment.result is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment already submitted")
+
+    if assignment.status not in {AssignmentStatus.ASSIGNED, AssignmentStatus.STARTED}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment is not in a submittable state")
 
     finished_at = datetime.now(UTC)
     assignment.status = AssignmentStatus.COMPLETED if payload.error_message is None else AssignmentStatus.FAILED
