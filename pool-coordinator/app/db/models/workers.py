@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime
+from typing import Any
+
+from sqlalchemy import DateTime, JSON
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,12 +19,17 @@ class Worker(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     status: Mapped[WorkerStatus] = mapped_column(
         SqlEnum(WorkerStatus, name="worker_status_enum", native_enum=False),
         nullable=False,
         server_default=WorkerStatus.OFFLINE.value,
     )
-    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    specs_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Canonical format: base64url-encoded public key.
+    public_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     settings: Mapped[WorkerSettings] = relationship(
         back_populates="worker",
@@ -31,8 +38,9 @@ class Worker(TimestampMixin, Base):
     )
 
     __table_args__ = (
+        Index("ix_workers_owner_user_id", "owner_user_id"),
         Index("ix_workers_status", "status"),
-        Index("ix_workers_last_heartbeat_at", "last_heartbeat_at"),
+        Index("ix_workers_last_seen_at", "last_seen_at"),
     )
 
 

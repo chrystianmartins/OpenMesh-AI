@@ -60,6 +60,7 @@ class Assignment(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    nonce: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
 
     job: Mapped[Job] = relationship(back_populates="assignments")
     result: Mapped[Result | None] = relationship(
@@ -71,6 +72,7 @@ class Assignment(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_assignments_job_id", "job_id"),
         Index("ix_assignments_worker_id", "worker_id"),
+        Index("ix_assignments_nonce", "nonce"),
         Index("ix_assignments_status", "status"),
     )
 
@@ -87,6 +89,9 @@ class Result(TimestampMixin, Base):
     output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    output_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metrics_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     assignment: Mapped[Assignment] = relationship(back_populates="result")
 
