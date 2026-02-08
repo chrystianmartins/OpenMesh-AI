@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::Engine;
 use clap::{Parser, Subcommand};
@@ -105,7 +106,8 @@ fn specs_path() -> Result<PathBuf, String> {
 
 fn cmd_init(config: Config) -> Result<(), String> {
     let path = config_path()?;
-    let toml = toml::to_string_pretty(&config).map_err(|e| format!("serialize config failed: {e}"))?;
+    let toml =
+        toml::to_string_pretty(&config).map_err(|e| format!("serialize config failed: {e}"))?;
     fs::write(&path, toml).map_err(|e| format!("write config failed: {e}"))?;
     info!(path = %path.display(), "config saved");
     Ok(())
@@ -196,10 +198,11 @@ fn detect_gpu() -> Option<String> {
 fn cmd_start() -> Result<(), String> {
     let cfg = read_config_optional()?.ok_or_else(|| "config not found, run init".to_string())?;
     let signing_key = load_private_key()?;
+    let mut engine = PythonEngineExecutor::new()?;
 
     let mut backoff = Duration::from_secs(1);
     loop {
-        match run_cycle(&cfg, &signing_key) {
+        match run_cycle(&cfg, &signing_key, &mut engine) {
             Ok(()) => backoff = Duration::from_secs(1),
             Err(e) => {
                 error!(error = %e, "cycle failed");
@@ -211,10 +214,14 @@ fn cmd_start() -> Result<(), String> {
     }
 }
 
-fn run_cycle(cfg: &Config, signing_key: &SigningKey) -> Result<(), String> {
+fn run_cycle(
+    cfg: &Config,
+    signing_key: &SigningKey,
+    engine: &mut PythonEngineExecutor,
+) -> Result<(), String> {
     heartbeat(cfg)?;
     let job = poll_job(cfg)?;
-    let result = execute_dummy(&job)?;
+    let result = execute_job(&job, engine)?;
     submit_signed_result(cfg, signing_key, &result)?;
     Ok(())
 }
@@ -233,27 +240,254 @@ fn poll_job(cfg: &Config) -> Result<Value, String> {
     }
     let job = serde_json::json!({
         "job_id": "dummy-001",
-        "payload": {"action": "noop"}
+        "payload": {
+            "action": "EMBED",
+            "input": {"text": "openmesh worker example payload"}
+        }
     });
     info!("job polled");
     Ok(job)
 }
 
-fn execute_dummy(job: &Value) -> Result<Value, String> {
+fn execute_job(job: &Value, engine: &mut PythonEngineExecutor) -> Result<Value, String> {
     let job_id = job
         .get("job_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "job_id missing".to_string())?;
+    let payload = job
+        .get("payload")
+        .cloned()
+        .ok_or_else(|| "payload missing".to_string())?;
+
+    let engine_response = engine.execute(&payload)?;
+
+    let mut metrics_json = serde_json::Map::new();
+    metrics_json.insert(
+        "latency_ms".to_string(),
+        serde_json::Value::from(engine_response.latency_ms as u64),
+    );
+    metrics_json.insert(
+        "model_name".to_string(),
+        serde_json::Value::String(engine_response.model_name),
+    );
+    metrics_json.insert(
+        "device".to_string(),
+        serde_json::Value::String(engine_response.device),
+    );
+
     let result = serde_json::json!({
         "job_id": job_id,
         "status": "ok",
-        "output": "dummy execution"
+        "output": engine_response.result,
+        "metrics_json": metrics_json,
     });
-    info!(job_id, "job executed (dummy)");
+    info!(job_id, "job executed (python engine)");
     Ok(result)
 }
 
-fn submit_signed_result(cfg: &Config, signing_key: &SigningKey, result: &Value) -> Result<(), String> {
+#[derive(Debug)]
+struct EngineExecution {
+    result: Value,
+    model_name: String,
+    device: String,
+    latency_ms: u128,
+}
+
+#[derive(Debug)]
+struct PythonEngineExecutor {
+    mode: EngineMode,
+    python_bin: String,
+    engine_script: PathBuf,
+    server: Option<PersistentEngineProcess>,
+}
+
+#[derive(Debug)]
+enum EngineMode {
+    Persistent,
+    OneShot,
+}
+
+#[derive(Debug)]
+struct PersistentEngineProcess {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+}
+
+impl PythonEngineExecutor {
+    fn new() -> Result<Self, String> {
+        let mode = match std::env::var("OPENMESH_PY_ENGINE_MODE") {
+            Ok(value) if value.eq_ignore_ascii_case("oneshot") => EngineMode::OneShot,
+            _ => EngineMode::Persistent,
+        };
+        let python_bin =
+            std::env::var("OPENMESH_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+        let engine_script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("engine_py/engine.py");
+
+        if !engine_script.exists() {
+            return Err(format!(
+                "python engine script not found at {}",
+                engine_script.display()
+            ));
+        }
+
+        let mut executor = Self {
+            mode,
+            python_bin,
+            engine_script,
+            server: None,
+        };
+
+        if matches!(executor.mode, EngineMode::Persistent) {
+            executor.server = Some(executor.spawn_server()?);
+        }
+
+        Ok(executor)
+    }
+
+    fn execute(&mut self, payload: &Value) -> Result<EngineExecution, String> {
+        match self.mode {
+            EngineMode::Persistent => self.execute_persistent(payload),
+            EngineMode::OneShot => self.execute_oneshot(payload),
+        }
+    }
+
+    fn execute_persistent(&mut self, payload: &Value) -> Result<EngineExecution, String> {
+        if self.server.is_none() {
+            self.server = Some(self.spawn_server()?);
+        }
+
+        let server = self
+            .server
+            .as_mut()
+            .ok_or_else(|| "python server unavailable".to_string())?;
+        let started = Instant::now();
+        let request =
+            serde_json::to_string(payload).map_err(|e| format!("serialize payload failed: {e}"))?;
+        server
+            .stdin
+            .write_all(request.as_bytes())
+            .and_then(|_| server.stdin.write_all(b"\n"))
+            .and_then(|_| server.stdin.flush())
+            .map_err(|e| format!("write to python engine failed: {e}"))?;
+
+        let mut line = String::new();
+        server
+            .stdout
+            .read_line(&mut line)
+            .map_err(|e| format!("read from python engine failed: {e}"))?;
+        if line.trim().is_empty() {
+            return Err("python engine returned empty response".to_string());
+        }
+
+        self.parse_response(&line, started.elapsed().as_millis())
+    }
+
+    fn execute_oneshot(&self, payload: &Value) -> Result<EngineExecution, String> {
+        let started = Instant::now();
+        let request =
+            serde_json::to_string(payload).map_err(|e| format!("serialize payload failed: {e}"))?;
+
+        let output = Command::new(&self.python_bin)
+            .arg(&self.engine_script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(request.as_bytes())?;
+                }
+                child.wait_with_output()
+            })
+            .map_err(|e| format!("execute python engine failed: {e}"))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("python engine exited with failure: {stderr}"));
+        }
+
+        let stdout =
+            String::from_utf8(output.stdout).map_err(|e| format!("utf8 decode failed: {e}"))?;
+        self.parse_response(stdout.trim(), started.elapsed().as_millis())
+    }
+
+    fn parse_response(&self, raw: &str, latency_ms: u128) -> Result<EngineExecution, String> {
+        let value: Value =
+            serde_json::from_str(raw).map_err(|e| format!("parse engine response failed: {e}"))?;
+        let ok = value.get("ok").and_then(Value::as_bool).unwrap_or(false);
+        if !ok {
+            let err = value
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown python engine error");
+            return Err(err.to_string());
+        }
+
+        let result = value
+            .get("result")
+            .cloned()
+            .ok_or_else(|| "engine response missing result".to_string())?;
+        let model_name = value
+            .get("model_name")
+            .and_then(Value::as_str)
+            .unwrap_or("all-MiniLM-L6-v2")
+            .to_string();
+        let device = value
+            .get("device")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+
+        Ok(EngineExecution {
+            result,
+            model_name,
+            device,
+            latency_ms,
+        })
+    }
+
+    fn spawn_server(&self) -> Result<PersistentEngineProcess, String> {
+        let mut child = Command::new(&self.python_bin)
+            .arg(&self.engine_script)
+            .arg("--server")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| format!("spawn python engine failed: {e}"))?;
+
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "python engine stdin unavailable".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "python engine stdout unavailable".to_string())?;
+
+        Ok(PersistentEngineProcess {
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+        })
+    }
+}
+
+impl Drop for PythonEngineExecutor {
+    fn drop(&mut self) {
+        if let Some(server) = self.server.as_mut() {
+            let _ = server.child.kill();
+            let _ = server.child.wait();
+        }
+    }
+}
+
+fn submit_signed_result(
+    cfg: &Config,
+    signing_key: &SigningKey,
+    result: &Value,
+) -> Result<(), String> {
     let canonical = canonical_json_string(result)?;
     let digest = sha256_hex(canonical.as_bytes());
     let signature = signing_key.sign(digest.as_bytes());
@@ -279,7 +513,8 @@ fn read_config_optional() -> Result<Option<Config>, String> {
 }
 
 fn load_private_key() -> Result<SigningKey, String> {
-    let raw = fs::read_to_string(key_path()?).map_err(|e| format!("read private_key failed: {e}"))?;
+    let raw =
+        fs::read_to_string(key_path()?).map_err(|e| format!("read private_key failed: {e}"))?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(raw.trim())
         .map_err(|e| format!("decode private_key failed: {e}"))?;
@@ -292,7 +527,8 @@ fn load_private_key() -> Result<SigningKey, String> {
 
 fn canonical_json_string(value: &Value) -> Result<String, String> {
     let canonical = canonicalize_value(value);
-    serde_json::to_string(&canonical).map_err(|e| format!("canonical json serialization failed: {e}"))
+    serde_json::to_string(&canonical)
+        .map_err(|e| format!("canonical json serialization failed: {e}"))
 }
 
 fn canonicalize_value(value: &Value) -> Value {
@@ -331,7 +567,11 @@ fn hex_bytes(data: &[u8]) -> String {
 }
 
 #[allow(dead_code)]
-fn verify_signature(verifying_key: &VerifyingKey, message: &[u8], sig_b64: &str) -> Result<bool, String> {
+fn verify_signature(
+    verifying_key: &VerifyingKey,
+    message: &[u8],
+    sig_b64: &str,
+) -> Result<bool, String> {
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(sig_b64)
         .map_err(|e| format!("decode signature failed: {e}"))?;
