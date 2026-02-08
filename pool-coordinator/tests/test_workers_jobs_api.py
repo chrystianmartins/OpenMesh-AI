@@ -63,7 +63,7 @@ def test_heartbeat_requires_worker_ownership(client: TestClient, create_user, au
     assert response.status_code == 404
 
 
-def test_poll_returns_pending_assignment_for_owned_worker(
+def test_poll_returns_assigned_assignment_for_owned_worker(
     client: TestClient,
     create_user,
     auth_headers,
@@ -84,7 +84,7 @@ def test_poll_returns_pending_assignment_for_owned_worker(
         Assignment(
             job_id=job.id,
             worker_id=worker.id,
-            status=AssignmentStatus.PENDING,
+            status=AssignmentStatus.ASSIGNED,
             assigned_at=datetime.now(UTC),
             nonce="nonce-poll-1",
         )
@@ -129,7 +129,7 @@ def test_submit_validates_nonce_signature_and_replay(
     assignment = Assignment(
         job_id=job.id,
         worker_id=worker.id,
-        status=AssignmentStatus.PENDING,
+        status=AssignmentStatus.ASSIGNED,
         assigned_at=datetime.now(UTC),
         nonce="nonce-submit-1",
     )

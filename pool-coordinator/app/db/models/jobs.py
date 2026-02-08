@@ -54,7 +54,7 @@ class Assignment(TimestampMixin, Base):
     status: Mapped[AssignmentStatus] = mapped_column(
         SqlEnum(AssignmentStatus, name="assignment_status_enum", native_enum=False),
         nullable=False,
-        server_default=AssignmentStatus.PENDING.value,
+        server_default=AssignmentStatus.ASSIGNED.value,
     )
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -28,7 +28,7 @@ class JobStatus(str, Enum):
 
 
 class AssignmentStatus(str, Enum):
-    PENDING = "pending"
+    ASSIGNED = "assigned"
     STARTED = "started"
     COMPLETED = "completed"
     FAILED = "failed"
