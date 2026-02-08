@@ -22,6 +22,7 @@ class DefaultPricingRule:
     name: str
     job_type: JobType
     unit_price: Decimal
+    unit_cost_tokens: Decimal
     minimum_charge: Decimal
 
 
@@ -30,12 +31,14 @@ DEFAULT_PRICING_RULES: tuple[DefaultPricingRule, ...] = (
         name="EMBED",
         job_type=JobType.EMBEDDING,
         unit_price=Decimal("0.00010000"),
+        unit_cost_tokens=Decimal("10.00000000"),
         minimum_charge=Decimal("0.00000000"),
     ),
     DefaultPricingRule(
         name="RANK",
         job_type=JobType.INFERENCE,
         unit_price=Decimal("0.00020000"),
+        unit_cost_tokens=Decimal("20.00000000"),
         minimum_charge=Decimal("0.00000000"),
     ),
 )
@@ -84,6 +87,7 @@ def _upsert_pool_settings(db: Session) -> None:
             assignment_retry_limit=3,
             cleanup_interval_seconds=300,
             enable_auto_scaling=True,
+            pool_fee_bps=1000,
         )
     )
 
@@ -99,6 +103,7 @@ def _upsert_pricing_rules(db: Session) -> None:
                     name=rule.name,
                     job_type=rule.job_type,
                     unit_price=rule.unit_price,
+                    unit_cost_tokens=rule.unit_cost_tokens,
                     minimum_charge=rule.minimum_charge,
                     is_active=True,
                     effective_from=now,
@@ -107,6 +112,7 @@ def _upsert_pricing_rules(db: Session) -> None:
             )
             continue
 
+        existing_rule.unit_cost_tokens = rule.unit_cost_tokens
         existing_rule.is_active = True
 
 

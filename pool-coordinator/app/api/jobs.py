@@ -15,6 +15,7 @@ from app.db.models.jobs import Assignment, Result
 from app.db.models.workers import Worker
 from app.schemas.jobs import JobPollRequest, JobPollResponse, JobSubmitRequest, JobSubmitResponse
 from app.schemas.workers import WorkerHeartbeatRequest, WorkerHeartbeatResponse
+from app.services.finance import apply_job_verification_accounting
 from app.services.verification import process_submission_verification
 
 router = APIRouter(tags=["jobs"])
@@ -133,6 +134,7 @@ def submit_job(
     db.add(result)
 
     process_submission_verification(db, assignment, result)
+    apply_job_verification_accounting(db, assignment=assignment, result=result)
 
     try:
         db.commit()
