@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -12,13 +13,40 @@ from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("pool-gateway")
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s [%(name)s] request_id=%(request_id)s %(message)s",
-)
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+        }
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def configure_logging() -> None:
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level_name, logging.INFO))
+
+    if not root_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonFormatter())
+        root_logger.addHandler(handler)
+        return
+
+    for handler in root_logger.handlers:
+        handler.setFormatter(JsonFormatter())
+
+
+configure_logging()
 
 
 class RequestLoggerAdapter(logging.LoggerAdapter):
@@ -33,9 +61,12 @@ class Settings:
     coordinator_url: str
     internal_token: str
     api_keys: dict[str, str]
-    rate_limit_per_minute: int
+    rate_limit_per_minute_api_key: int
+    rate_limit_per_minute_ip: int
     poll_timeout_seconds: float
     poll_interval_seconds: float
+    cors_enabled: bool
+    cors_allow_origins: list[str]
 
 
 class RateLimiter:
@@ -60,12 +91,27 @@ class RateLimiter:
 
 
 class EmbedRequest(BaseModel):
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=20_000)
 
 
 class RankRequest(BaseModel):
     query: str = Field(min_length=1)
-    texts: list[str] = Field(min_length=1)
+    texts: list[str] = Field(min_length=1, max_length=32)
+
+
+def _parse_bool(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 def load_settings() -> Settings:
@@ -83,21 +129,47 @@ def load_settings() -> Settings:
         coordinator_url=os.getenv("COORDINATOR_URL", "http://localhost:8001"),
         internal_token=os.getenv("COORDINATOR_INTERNAL_TOKEN", "dev-internal-token"),
         api_keys=api_keys,
-        rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
+        rate_limit_per_minute_api_key=int(
+            os.getenv("RATE_LIMIT_PER_MINUTE_API_KEY", os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+        ),
+        rate_limit_per_minute_ip=int(os.getenv("RATE_LIMIT_PER_MINUTE_IP", "120")),
         poll_timeout_seconds=float(os.getenv("POLL_TIMEOUT_SECONDS", "20")),
         poll_interval_seconds=float(os.getenv("POLL_INTERVAL_SECONDS", "1.0")),
+        cors_enabled=_parse_bool(os.getenv("CORS_ENABLED"), default=False),
+        cors_allow_origins=[origin.strip() for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if origin.strip()],
     )
 
 
 async def lifespan(app: FastAPI):
     app.state.settings = load_settings()
-    app.state.rate_limiter = RateLimiter(max_requests=app.state.settings.rate_limit_per_minute)
+    app.state.rate_limiter_api_key = RateLimiter(max_requests=app.state.settings.rate_limit_per_minute_api_key)
+    app.state.rate_limiter_ip = RateLimiter(max_requests=app.state.settings.rate_limit_per_minute_ip)
     app.state.coordinator_client = httpx.AsyncClient(base_url=app.state.settings.coordinator_url, timeout=5.0)
     yield
     await app.state.coordinator_client.aclose()
 
 
 app = FastAPI(title="OpenMesh Pool Gateway", version="0.1.0", lifespan=lifespan)
+
+
+settings_for_cors = load_settings()
+if settings_for_cors.cors_enabled:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings_for_cors.cors_allow_origins or ["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def _validate_rank_texts(texts: list[str]) -> None:
+    for idx, text in enumerate(texts):
+        if len(text) > 10_000:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"texts[{idx}] exceeds max length of 10000",
+            )
 
 
 async def get_client_id(
@@ -112,7 +184,9 @@ async def get_client_id(
         log.warning("authentication failed")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-    request.app.state.rate_limiter.check(x_api_key)
+    client_ip = _client_ip(request)
+    request.app.state.rate_limiter_api_key.check(x_api_key)
+    request.app.state.rate_limiter_ip.check(client_ip)
     return client_id
 
 
@@ -209,6 +283,7 @@ async def embed(payload: EmbedRequest, request: Request, client_id: str = Depend
 
 @app.post("/v1/rank")
 async def rank(payload: RankRequest, request: Request, client_id: str = Depends(get_client_id)) -> dict[str, Any]:
+    _validate_rank_texts(payload.texts)
     return await _run_job(request, client_id=client_id, job_type="rank", payload=payload.model_dump())
 
 

@@ -362,3 +362,96 @@ def test_canonical_job_rejects_cheater_and_bans_on_repeat(
     assert result_1.verification_status == VerificationStatus.REJECTED
     assert result_2.verification_status == VerificationStatus.REJECTED
     assert worker.status == WorkerStatus.BANNED
+
+
+def test_submit_rejects_invalid_payload_shape(
+    client: TestClient,
+    create_user,
+    auth_headers,
+    db_session: Session,
+) -> None:
+    owner = create_user(email="shape-owner@test.local", role=Role.WORKER_OWNER)
+    worker, key = _make_worker(owner.id, "worker-shape")
+    job = Job(created_by_user_id=owner.id, job_type=JobType.INFERENCE, status=JobStatus.RUNNING, payload={"p": 1})
+    db_session.add_all([worker, job])
+    db_session.flush()
+    assignment = Assignment(
+        job_id=job.id,
+        worker_id=worker.id,
+        status=AssignmentStatus.ASSIGNED,
+        assigned_at=datetime.now(UTC),
+        nonce="nonce-shape-1",
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    headers = auth_headers("shape-owner@test.local", "super-secret-password")
+    signature = _sign_submission(key, assignment.id, assignment.nonce, "hash-shape")
+
+    response = client.post(
+        "/jobs/submit",
+        json={
+            "worker_id": worker.id,
+            "assignment_id": assignment.id,
+            "nonce": assignment.nonce,
+            "signature": signature,
+            "output_hash": "hash-shape",
+            "output": {"ok": True},
+            "error_message": "should-not-be-together",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_submit_rate_limit_per_worker(
+    client: TestClient,
+    create_user,
+    auth_headers,
+    db_session: Session,
+) -> None:
+    client.app.state.submit_rate_limiter.max_requests = 1
+    owner = create_user(email="ratelimit-owner@test.local", role=Role.WORKER_OWNER)
+    worker, key = _make_worker(owner.id, "worker-ratelimit")
+
+    job_1 = Job(created_by_user_id=owner.id, job_type=JobType.INFERENCE, status=JobStatus.RUNNING, payload={"id": 1})
+    job_2 = Job(created_by_user_id=owner.id, job_type=JobType.INFERENCE, status=JobStatus.RUNNING, payload={"id": 2})
+    db_session.add_all([worker, job_1, job_2])
+    db_session.flush()
+    assignment_1 = Assignment(job_id=job_1.id, worker_id=worker.id, status=AssignmentStatus.ASSIGNED, assigned_at=datetime.now(UTC), nonce="nonce-rl-1")
+    assignment_2 = Assignment(job_id=job_2.id, worker_id=worker.id, status=AssignmentStatus.ASSIGNED, assigned_at=datetime.now(UTC), nonce="nonce-rl-2")
+    db_session.add_all([assignment_1, assignment_2])
+    db_session.commit()
+
+    headers = auth_headers("ratelimit-owner@test.local", "super-secret-password")
+    signature_1 = _sign_submission(key, assignment_1.id, assignment_1.nonce, "hash-rl-1")
+    signature_2 = _sign_submission(key, assignment_2.id, assignment_2.nonce, "hash-rl-2")
+
+    first = client.post(
+        "/jobs/submit",
+        json={
+            "worker_id": worker.id,
+            "assignment_id": assignment_1.id,
+            "nonce": assignment_1.nonce,
+            "signature": signature_1,
+            "output": {"ok": True},
+            "output_hash": "hash-rl-1",
+        },
+        headers=headers,
+    )
+    second = client.post(
+        "/jobs/submit",
+        json={
+            "worker_id": worker.id,
+            "assignment_id": assignment_2.id,
+            "nonce": assignment_2.nonce,
+            "signature": signature_2,
+            "output": {"ok": True},
+            "output_hash": "hash-rl-2",
+        },
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429

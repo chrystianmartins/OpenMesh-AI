@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
@@ -65,6 +65,7 @@ def heartbeat_worker(
     db: Session = Depends(get_db),
 ) -> WorkerHeartbeatResponse:
     worker = _get_owned_worker(db=db, worker_id=payload.worker_id, owner_user_id=current_user.id)
+
     now = datetime.now(UTC)
     worker.last_seen_at = now
     worker.status = WorkerStatus.ONLINE
@@ -79,6 +80,7 @@ def poll_job(
     db: Session = Depends(get_db),
 ) -> JobPollResponse:
     worker = _get_owned_worker(db=db, worker_id=payload.worker_id, owner_user_id=current_user.id)
+
 
     assignment = db.scalar(
         select(Assignment)
@@ -103,10 +105,15 @@ def poll_job(
 @router.post("/jobs/submit", response_model=JobSubmitResponse)
 def submit_job(
     payload: JobSubmitRequest,
+    request: Request,
     current_user: User = Depends(require_roles(Role.WORKER_OWNER)),
     db: Session = Depends(get_db),
 ) -> JobSubmitResponse:
     worker = _get_owned_worker(db=db, worker_id=payload.worker_id, owner_user_id=current_user.id)
+
+    limiter = request.app.state.submit_rate_limiter
+    if not limiter.allow(str(worker.id)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Submit rate limit exceeded")
 
     if not worker.public_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Worker public key is not configured")
