@@ -17,7 +17,6 @@ class User(TimestampMixin, Base):
     role: Mapped[Role] = mapped_column(
         SqlEnum(Role, name="role_enum", native_enum=False),
         nullable=False,
-        server_default=Role.USER.value,
     )
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)

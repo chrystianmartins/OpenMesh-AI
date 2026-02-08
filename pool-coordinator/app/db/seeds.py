@@ -43,7 +43,7 @@ DEFAULT_PRICING_RULES: tuple[DefaultPricingRule, ...] = (
 password_hasher = PasswordHasher()
 
 
-def _upsert_admin_user(db: Session) -> None:
+def _upsert_bootstrap_user(db: Session) -> None:
     app_settings = get_settings()
     existing_user = db.scalar(select(User).where(User.email == app_settings.admin_email))
 
@@ -51,15 +51,15 @@ def _upsert_admin_user(db: Session) -> None:
         db.add(
             User(
                 email=app_settings.admin_email,
-                role=Role.ADMIN,
+                role=Role.WORKER_OWNER,
                 is_active=True,
                 password_hash=password_hasher.hash(app_settings.admin_password),
             )
         )
         return
 
-    if existing_user.role != Role.ADMIN:
-        existing_user.role = Role.ADMIN
+    if existing_user.role != Role.WORKER_OWNER:
+        existing_user.role = Role.WORKER_OWNER
 
     if not existing_user.is_active:
         existing_user.is_active = True
@@ -111,7 +111,7 @@ def _upsert_pricing_rules(db: Session) -> None:
 
 
 def seed_defaults(db: Session) -> None:
-    _upsert_admin_user(db)
+    _upsert_bootstrap_user(db)
     _upsert_pool_settings(db)
     _upsert_pricing_rules(db)
 
