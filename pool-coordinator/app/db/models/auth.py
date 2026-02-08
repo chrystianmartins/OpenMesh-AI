@@ -32,6 +32,7 @@ class ApiKey(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(80), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     revoked: Mapped[bool] = mapped_column(nullable=False, server_default="false")
 
@@ -40,4 +41,5 @@ class ApiKey(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_api_keys_user_id", "user_id"),
         Index("ix_api_keys_revoked", "revoked"),
+        Index("ix_api_keys_prefix", "prefix"),
     )
