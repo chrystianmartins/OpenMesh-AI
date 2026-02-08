@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
+from app.api.me import router as me_router
+
 app = FastAPI(title="OpenMesh Pool Coordinator", version="0.1.0")
+app.include_router(auth_router)
+app.include_router(me_router)
 
 
 @app.get("/health")

@@ -5,6 +5,8 @@ class Role(str, Enum):
     ADMIN = "admin"
     OPERATOR = "operator"
     USER = "user"
+    CLIENT = "client"
+    WORKER_OWNER = "worker_owner"
 
 
 class WorkerStatus(str, Enum):
