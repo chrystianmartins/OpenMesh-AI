@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import base64
-import re
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies.auth import get_db, require_roles
+from app.core.protocol_crypto import ProtocolCryptoError, canonical_json, verify_ed25519_signature
 from app.db.models.auth import User
 from app.db.models.enums import AssignmentStatus, Role, WorkerStatus
 from app.db.models.jobs import Assignment, Result
@@ -17,17 +17,6 @@ from app.schemas.jobs import JobPollRequest, JobPollResponse, JobSubmitRequest, 
 from app.schemas.workers import WorkerHeartbeatRequest, WorkerHeartbeatResponse
 
 router = APIRouter(tags=["jobs"])
-
-
-def _is_valid_base64url(value: str) -> bool:
-    if not value or re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
-        return False
-    try:
-        padding = "=" * (-len(value) % 4)
-        decoded = base64.urlsafe_b64decode(f"{value}{padding}")
-    except (ValueError, TypeError):
-        return False
-    return len(decoded) > 0
 
 
 def _get_owned_worker(*, db: Session, worker_id: int, owner_user_id: int) -> Worker:
@@ -87,10 +76,33 @@ def submit_job(
 ) -> JobSubmitResponse:
     worker = _get_owned_worker(db=db, worker_id=payload.worker_id, owner_user_id=current_user.id)
 
+    if not worker.public_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Worker public key is not configured")
+
+    signed_payload = {
+        "assignment_id": payload.assignment_id,
+        "nonce": payload.nonce,
+        "output_hash": payload.output_hash,
+    }
+    signed_payload_bytes = canonical_json(signed_payload)
+
+    try:
+        signature_valid = verify_ed25519_signature(
+            public_key_b64url=worker.public_key,
+            signature_b64url=payload.signature,
+            message=signed_payload_bytes,
+        )
+    except ProtocolCryptoError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if not signature_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Signature verification failed")
+
     assignment = db.scalar(
         select(Assignment)
         .options(joinedload(Assignment.result))
         .where(Assignment.id == payload.assignment_id, Assignment.worker_id == worker.id)
+        .with_for_update()
     )
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
@@ -104,9 +116,6 @@ def submit_job(
         AssignmentStatus.CANCELED,
     }:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment already submitted")
-
-    if not _is_valid_base64url(payload.signature):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
 
     finished_at = datetime.now(UTC)
     assignment.status = AssignmentStatus.COMPLETED if payload.error_message is None else AssignmentStatus.FAILED
@@ -123,7 +132,11 @@ def submit_job(
             metrics_json=payload.metrics_json,
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent submission conflict") from exc
 
     return JobSubmitResponse(
         assignment_id=assignment.id,
