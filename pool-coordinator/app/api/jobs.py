@@ -10,12 +10,20 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.dependencies.auth import get_db, require_roles
 from app.core.protocol_crypto import ProtocolCryptoError, canonical_json, verify_ed25519_signature
 from app.db.models.auth import User
-from app.db.models.enums import AssignmentStatus, Role, WorkerStatus
+from app.db.models.enums import AssignmentStatus, JobStatus, Role, WorkerStatus
 from app.db.models.jobs import Assignment, Result
 from app.db.models.workers import Worker
-from app.schemas.jobs import JobPollRequest, JobPollResponse, JobSubmitRequest, JobSubmitResponse
+from app.schemas.jobs import (
+    InternalJobCreateRequest,
+    InternalJobCreateResponse,
+    JobPollRequest,
+    JobPollResponse,
+    JobSubmitRequest,
+    JobSubmitResponse,
+)
 from app.schemas.workers import WorkerHeartbeatRequest, WorkerHeartbeatResponse
 from app.services.finance import apply_job_verification_accounting
+from app.services.job_dispatcher import create_queued_job
 from app.services.verification import process_submission_verification
 
 router = APIRouter(tags=["jobs"])
@@ -26,6 +34,28 @@ def _get_owned_worker(*, db: Session, worker_id: int, owner_user_id: int) -> Wor
     if worker is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
     return worker
+
+
+@router.post("/internal/jobs/create", response_model=InternalJobCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_internal_job(
+    payload: InternalJobCreateRequest,
+    db: Session = Depends(get_db),
+) -> InternalJobCreateResponse:
+    job, estimated_units = create_queued_job(
+        db,
+        created_by_user_id=payload.created_by_user_id,
+        payload=payload.payload,
+        job_type=payload.job_type,
+        priority=payload.priority,
+        price_multiplier=payload.price_multiplier,
+    )
+    db.commit()
+    return InternalJobCreateResponse(
+        job_id=job.id,
+        status=JobStatus.QUEUED.value,
+        estimated_units=estimated_units,
+        price_multiplier=payload.price_multiplier,
+    )
 
 
 @router.post("/workers/heartbeat", response_model=WorkerHeartbeatResponse)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -37,3 +38,29 @@ class WorkerHeartbeatRequest(BaseModel):
 class WorkerHeartbeatResponse(BaseModel):
     worker_id: int
     last_seen_at: datetime
+
+
+class AdminWorkerItem(BaseModel):
+    id: int
+    name: str
+    owner_user_id: int
+    status: str
+    reputation: Decimal
+    estimated_latency_ms: int
+    active_jobs: int
+    max_parallel_jobs: int
+
+
+class AdminWorkersResponse(BaseModel):
+    workers: list[AdminWorkerItem]
+
+
+class LeaderboardItem(BaseModel):
+    worker_id: int
+    worker_name: str
+    owner_user_id: int
+    tokens_earned: Decimal
+
+
+class LeaderboardResponse(BaseModel):
+    leaderboard: list[LeaderboardItem]
