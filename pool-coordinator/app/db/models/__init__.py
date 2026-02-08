@@ -13,6 +13,7 @@ from app.db.models.enums import (
 )
 from app.db.models.jobs import Assignment, Job, Result
 from app.db.models.pool import PoolSettings, PricingRule
+from app.db.models.p2p import Peer
 from app.db.models.workers import Worker, WorkerHeartbeat, WorkerSettings
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "JobType",
     "LedgerEntry",
     "OwnerType",
+    "Peer",
     "PoolSettings",
     "PricingRule",
     "Result",

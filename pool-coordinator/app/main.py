@@ -9,6 +9,7 @@ from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.jobs import router as jobs_router
 from app.api.me import router as me_router
+from app.api.p2p import router as p2p_router
 from app.api.workers import router as workers_router
 from app.core.logging import configure_logging
 from app.core.rate_limit import SlidingWindowRateLimiter
@@ -32,6 +33,7 @@ app.include_router(admin_router)
 app.include_router(me_router)
 app.include_router(workers_router)
 app.include_router(jobs_router)
+app.include_router(p2p_router)
 
 
 @app.get("/health")
