@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user, get_db
+from app.api.dependencies.auth import get_current_user, get_db
 from app.db.models.accounting import Account
 from app.db.models.auth import User
 from app.db.models.enums import OwnerType, Role

@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/openmesh"
     admin_email: str = "admin@openmesh.local"
     admin_password: str = "change-me"
+    jwt_secret: str = "change-me-jwt-secret"
+    jwt_algorithm: str = "HS256"
+    access_token_ttl_minutes: int = 15
+    refresh_token_ttl_minutes: int = 20160
 
     model_config = SettingsConfigDict(
         env_file=".env",
