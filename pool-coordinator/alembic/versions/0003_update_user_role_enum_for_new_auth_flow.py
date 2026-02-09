@@ -43,7 +43,6 @@ def upgrade() -> None:
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS role_enum")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role_enum")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
-    op.execute("ALTER TABLE users ADD CONSTRAINT role_enum CHECK (role IN ('client', 'worker_owner'))")
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column(
@@ -64,7 +63,6 @@ def downgrade() -> None:
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS role_enum")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role_enum")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
-    op.execute("ALTER TABLE users ADD CONSTRAINT role_enum CHECK (role IN ('admin', 'operator', 'user'))")
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column(
