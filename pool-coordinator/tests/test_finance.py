@@ -153,7 +153,7 @@ def test_finance_endpoints_balance_ledger_and_summary(
     db_session: Session,
 ) -> None:
     user = create_user(email="finance-me@test.local", role=Role.CLIENT)
-    owner = create_user(email="finance-admin@test.local", role=Role.WORKER_OWNER)
+    create_user(email="finance-admin@test.local", role=Role.WORKER_OWNER)
 
     account = Account(owner_type=OwnerType.USER, owner_id=user.id, currency="TOK", balance=Decimal("5.5"))
     db_session.add(account)

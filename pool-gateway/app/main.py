@@ -7,9 +7,10 @@ import os
 import time
 import uuid
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any
+from typing import Any, AsyncIterator, Awaitable, Callable, MutableMapping, cast
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -37,22 +38,30 @@ def configure_logging() -> None:
     root_logger.setLevel(getattr(logging, level_name, logging.INFO))
 
     if not root_logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(JsonFormatter())
-        root_logger.addHandler(handler)
+        stream_handler: logging.Handler = logging.StreamHandler()
+        stream_handler.setFormatter(JsonFormatter())
+        root_logger.addHandler(stream_handler)
         return
 
-    for handler in root_logger.handlers:
-        handler.setFormatter(JsonFormatter())
+    for existing_handler in root_logger.handlers:
+        existing_handler.setFormatter(JsonFormatter())
 
 
 configure_logging()
 
 
-class RequestLoggerAdapter(logging.LoggerAdapter):
-    def process(self, msg: str, kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        extra = kwargs.setdefault("extra", {})
-        extra.setdefault("request_id", self.extra.get("request_id", "-"))
+class RequestLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
+    def process(
+        self,
+        msg: object,
+        kwargs: MutableMapping[str, Any],
+    ) -> tuple[object, MutableMapping[str, Any]]:
+        extra_obj = kwargs.get("extra")
+        if not isinstance(extra_obj, dict):
+            extra_obj = {}
+            kwargs["extra"] = extra_obj
+        adapter_extra = self.extra if isinstance(self.extra, dict) else {}
+        extra_obj.setdefault("request_id", adapter_extra.get("request_id", "-"))
         return msg, kwargs
 
 
@@ -192,7 +201,8 @@ def load_settings() -> Settings:
     )
 
 
-async def lifespan(app: FastAPI):
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = load_settings()
     app.state.rate_limiter_api_key = RateLimiter(
         max_requests=app.state.settings.rate_limit_per_minute_api_key
@@ -251,7 +261,10 @@ async def get_client_id(
 
 
 @app.middleware("http")
-async def request_context(request: Request, call_next):
+async def request_context(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     request.state.request_id = request_id
     log = RequestLoggerAdapter(logger, {"request_id": request_id})
@@ -346,7 +359,7 @@ async def _wait_for_verification(request: Request, job_id: str) -> dict[str, Any
         log.info("coordinator_poll elapsed_ms=%.2f status=%s", elapsed_ms, response.status_code)
         response.raise_for_status()
 
-        job = response.json()
+        job = cast(dict[str, Any], response.json())
         if job.get("status") == "verified":
             return job
         await asyncio.sleep(settings.poll_interval_seconds)
