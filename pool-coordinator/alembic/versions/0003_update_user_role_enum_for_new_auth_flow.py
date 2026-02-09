@@ -35,16 +35,20 @@ new_role_enum = sa.Enum(
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("users") as batch_op:
-        batch_op.alter_column("role", existing_type=old_role_enum, type_=sa.String(length=32), existing_nullable=False)
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(32) USING role::text")
 
     op.execute("UPDATE users SET role = 'worker_owner' WHERE role IN ('admin', 'operator')")
     op.execute("UPDATE users SET role = 'client' WHERE role = 'user'")
 
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS role_enum")
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role_enum")
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+    op.execute("ALTER TABLE users ADD CONSTRAINT role_enum CHECK (role IN ('client', 'worker_owner'))")
+
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column(
             "role",
-            existing_type=old_role_enum,
+            existing_type=sa.String(length=32),
             type_=new_role_enum,
             existing_nullable=False,
             server_default=None,
@@ -52,13 +56,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(32) USING role::text")
+
     op.execute("UPDATE users SET role = 'operator' WHERE role = 'worker_owner'")
     op.execute("UPDATE users SET role = 'user' WHERE role = 'client'")
+
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS role_enum")
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role_enum")
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+    op.execute("ALTER TABLE users ADD CONSTRAINT role_enum CHECK (role IN ('admin', 'operator', 'user'))")
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column(
             "role",
-            existing_type=new_role_enum,
+            existing_type=sa.String(length=32),
             type_=old_role_enum,
             existing_nullable=False,
             server_default="user",
