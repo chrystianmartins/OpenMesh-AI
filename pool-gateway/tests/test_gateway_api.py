@@ -134,3 +134,12 @@ def test_rate_limit_by_api_key_and_ip(monkeypatch) -> None:
 
     assert ok.status_code == 200
     assert limited_ip.status_code == 429
+
+
+def test_web_portal_homepage() -> None:
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "OpenMesh Control Center" in response.text
+    assert "Entrar no Portal" in response.text

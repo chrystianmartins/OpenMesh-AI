@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, MutableMapping, cast
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -222,6 +223,114 @@ app = FastAPI(title="OpenMesh Pool Gateway", version="0.1.0", lifespan=lifespan)
 app.state.metrics = PrometheusMetrics(enabled=False)
 
 
+PORTAL_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenMesh Portal</title>
+  <style>
+    :root { color-scheme: dark; --bg:#080d1c; --card:#121a30; --line:#27355f; --accent:#4f8cff; --text:#f4f7ff; --muted:#a7b3d1; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; background: radial-gradient(circle at top, #142347, var(--bg) 40%); color: var(--text); }
+    .container { min-height:100vh; display:grid; grid-template-columns: 240px 1fr; }
+    .menu { background: rgba(8,13,28,.86); border-right:1px solid var(--line); padding: 24px; }
+    .brand { font-weight: 700; margin-bottom: 24px; }
+    .menu nav { display:grid; gap: 10px; }
+    .menu a { color: var(--muted); text-decoration: none; padding: 8px 12px; border-radius: 10px; }
+    .menu a:hover { background: rgba(79,140,255,.12); color: var(--text); }
+    .content { padding: 24px; display:grid; gap: 24px; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .top h1 { margin:0; font-size: 1.4rem; }
+    .btn { border:0; border-radius: 12px; background: linear-gradient(120deg, var(--accent), #77d3ff); color:white; padding: 10px 16px; font-weight: 700; cursor:pointer; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; }
+    .card { background: linear-gradient(160deg, rgba(79,140,255,.1), rgba(18,26,48,.9)); border:1px solid var(--line); border-radius: 16px; padding: 16px; }
+    .label { font-size: .8rem; color: var(--muted); margin: 0; }
+    .value { margin: 8px 0 0; font-size: 1.35rem; font-weight: 700; }
+    .panel { background: rgba(18,26,48,.9); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+    table { width:100%; border-collapse: collapse; color: var(--text); }
+    th, td { text-align:left; padding: 10px 6px; border-bottom:1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; }
+    dialog { border:1px solid var(--line); border-radius: 16px; background: #0f172f; color: var(--text); width:min(420px, 90vw); }
+    form { display:grid; gap: 12px; }
+    input { width:100%; padding: 10px; border-radius: 10px; border:1px solid var(--line); background:#0b1227; color:var(--text); }
+    .row { display:flex; gap: 8px; justify-content:flex-end; }
+    .ghost { background:transparent; border:1px solid var(--line); }
+    .status { color:#79ffa7; font-size:.82rem; margin:0; }
+    @media (max-width: 860px) { .container { grid-template-columns: 1fr; } .menu { border-right:0; border-bottom:1px solid var(--line);} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <aside class="menu">
+      <div class="brand">OpenMesh Control Center</div>
+      <nav>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#relatorios">Relatórios</a>
+        <a href="#modelos">Modelos</a>
+        <a href="#workers">Workers</a>
+        <a href="#custos">Custos</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <div class="top">
+        <h1>Portal do Projeto OpenMesh-AI</h1>
+        <button class="btn" id="open-login">Entrar no Portal</button>
+      </div>
+      <section class="grid" id="dashboard">
+        <article class="card"><p class="label">Jobs hoje</p><p class="value">12.947</p></article>
+        <article class="card"><p class="label">Workers online</p><p class="value">128</p></article>
+        <article class="card"><p class="label">Uso token</p><p class="value">94.2k</p></article>
+        <article class="card"><p class="label">SLA</p><p class="value">99.93%</p></article>
+      </section>
+      <section class="panel" id="relatorios">
+        <h2>Relatórios de desempenho</h2>
+        <p class="status">Última sincronização: em tempo real</p>
+        <table>
+          <thead><tr><th>Serviço</th><th>Latência p95</th><th>Taxa erro</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Gateway</td><td>87 ms</td><td>0.12%</td><td>Saudável</td></tr>
+            <tr><td>Coordinator</td><td>132 ms</td><td>0.21%</td><td>Saudável</td></tr>
+            <tr><td>Inference Pool</td><td>246 ms</td><td>0.44%</td><td>Atenção</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="login-modal">
+    <h3>Login do Portal</h3>
+    <form method="dialog">
+      <label>Usuário<input type="text" id="user" placeholder="admin@openmesh.ai" required /></label>
+      <label>Senha<input type="password" id="password" placeholder="********" required /></label>
+      <p class="status" id="login-status">Acesso seguro com trilha de auditoria.</p>
+      <div class="row">
+        <button class="btn ghost" value="cancel">Cancelar</button>
+        <button class="btn" id="submit-login" value="default">Entrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const modal = document.getElementById('login-modal');
+    document.getElementById('open-login').addEventListener('click', () => modal.showModal());
+    document.getElementById('submit-login').addEventListener('click', (event) => {
+      event.preventDefault();
+      const username = document.getElementById('user').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const status = document.getElementById('login-status');
+      if (username && password) {
+        status.textContent = `Sessão iniciada para ${username}.`; 
+        modal.close();
+      } else {
+        status.textContent = 'Preencha login e senha para continuar.';
+      }
+    });
+  </script>
+</body>
+</html>"""
+
+
 settings_for_cors = load_settings()
 if settings_for_cors.cors_enabled:
     app.add_middleware(
@@ -400,6 +509,11 @@ async def rank(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "pool-gateway"}
+
+
+@app.get("/", response_class=HTMLResponse)
+def web_portal() -> str:
+    return PORTAL_HTML
 
 
 @app.get("/metrics")
