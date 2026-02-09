@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -38,7 +38,7 @@ def get_current_user(
     return user
 
 
-def require_roles(*roles: Role):
+def require_roles(*roles: Role) -> Callable[[User], User]:
     allowed_roles = set(roles)
 
     def _dependency(current_user: User = Depends(get_current_user)) -> User:

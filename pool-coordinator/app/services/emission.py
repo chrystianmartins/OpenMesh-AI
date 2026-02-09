@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import TypedDict
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +15,15 @@ from app.db.models.workers import Worker, WorkerHeartbeat
 from app.services.finance import TOKEN_CURRENCY
 
 SECONDS_PER_DAY = Decimal("86400")
+
+
+class DailyEmissionStatus(TypedDict):
+    date: date
+    cap_tokens: Decimal
+    emitted_today_tokens: Decimal
+    remaining_tokens: Decimal
+    run_completed: bool
+
 
 
 @dataclass(frozen=True)
@@ -113,7 +123,7 @@ def _calculate_uptime_ratio(
     return _clamp_ratio(uptime_ratio.quantize(Decimal("0.00000001")))
 
 
-def get_daily_emission_status(db: Session, *, now: datetime | None = None) -> dict[str, object]:
+def get_daily_emission_status(db: Session, *, now: datetime | None = None) -> DailyEmissionStatus:
     now_utc = now or datetime.now(UTC)
     today = now_utc.date()
     day_start = datetime.combine(today, datetime.min.time(), tzinfo=UTC)
@@ -146,7 +156,7 @@ def run_daily_emission(db: Session, *, now: datetime | None = None) -> DailyEmis
 
     cap_tokens = Decimal(str(settings.daily_emission_cap_tokens)).quantize(Decimal("0.00000001"))
     existing_status = get_daily_emission_status(db, now=now_utc)
-    remaining_cap = Decimal(existing_status["remaining_tokens"])
+    remaining_cap = existing_status["remaining_tokens"]
     if remaining_cap <= Decimal("0"):
         return DailyEmissionResult(
             target_day=target_day,
@@ -174,7 +184,13 @@ def run_daily_emission(db: Session, *, now: datetime | None = None) -> DailyEmis
             continue
 
         raw_reputation = (worker.specs_json or {}).get("reputation", 0.5)
-        reputation = _clamp_ratio(Decimal(str(raw_reputation)).quantize(Decimal("0.00000001")))
+        if isinstance(raw_reputation, Decimal):
+            reputation_value = raw_reputation
+        elif isinstance(raw_reputation, (int, float, str)):
+            reputation_value = Decimal(str(raw_reputation))
+        else:
+            reputation_value = Decimal("0")
+        reputation = _clamp_ratio(reputation_value.quantize(Decimal("0.00000001")))
         if reputation <= Decimal("0"):
             continue
 
