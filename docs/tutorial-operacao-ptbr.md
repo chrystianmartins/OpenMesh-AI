@@ -2,8 +2,8 @@
 
 Este guia mostra **como operar seu ambiente em produção** usando os serviços que você já subiu:
 
-- Coordinator: `http://212.56.35.111:8001`
-- Gateway: `http://212.56.35.111:8002`
+- Coordinator: `http://you.ip.server:8001`
+- Gateway: `http://you.ip.server:8002`
 
 ---
 
@@ -30,12 +30,12 @@ Entrada pública para clientes:
 
 Como as APIs são FastAPI, você já tem gestão web nativa via Swagger:
 
-- Coordinator docs: `http://212.56.35.111:8001/docs`
-- Gateway docs: `http://212.56.35.111:8002/docs`
+- Coordinator docs: `http://you.ip.server:8001/docs`
+- Gateway docs: `http://you.ip.server:8002/docs`
 
 Também existe o schema OpenAPI (para Postman/Insomnia):
-- `http://212.56.35.111:8001/openapi.json`
-- `http://212.56.35.111:8002/openapi.json`
+- `http://you.ip.server:8001/openapi.json`
+- `http://you.ip.server:8002/openapi.json`
 
 > **Fluxo na UI**: abrir endpoint → `Try it out` → preencher JSON → `Execute`.
 
@@ -154,7 +154,7 @@ Use a API key criada no coordinator.
 ## 7.1 Embed
 
 ```bash
-curl -X POST 'http://212.56.35.111:8002/v1/embed' \
+curl -X POST 'http://you.ip.server:8002/v1/embed' \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: SUA_API_KEY' \
   -d '{"text":"OpenMesh é uma rede distribuída."}'
@@ -163,7 +163,7 @@ curl -X POST 'http://212.56.35.111:8002/v1/embed' \
 ## 7.2 Rank
 
 ```bash
-curl -X POST 'http://212.56.35.111:8002/v1/rank' \
+curl -X POST 'http://you.ip.server:8002/v1/rank' \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: SUA_API_KEY' \
   -d '{
