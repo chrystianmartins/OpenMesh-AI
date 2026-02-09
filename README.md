@@ -12,6 +12,7 @@ Componentes:
 - `pool-gateway/` — API de borda para clientes, autenticação e roteamento para o coordinator.
 - `worker/` — CLI em Rust para registrar-se no pool, receber trabalho e reportar resultados.
 - `docs/` — documentação de protocolo, economia e operações.
+- Guia de instalação Ubuntu: `docs/install-ubuntu.md`
 - `scripts/` — utilitários de desenvolvimento.
 
 ## Token de uso (usage token)
