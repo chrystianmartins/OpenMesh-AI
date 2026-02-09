@@ -21,8 +21,6 @@ old_role_enum = sa.Enum(
     "admin",
     "operator",
     "user",
-    "client",
-    "worker_owner",
     name="role_enum",
     native_enum=False,
     create_constraint=True,
@@ -37,6 +35,9 @@ new_role_enum = sa.Enum(
 
 
 def upgrade() -> None:
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.alter_column("role", existing_type=old_role_enum, type_=sa.String(length=32), existing_nullable=False)
+
     op.execute("UPDATE users SET role = 'worker_owner' WHERE role IN ('admin', 'operator')")
     op.execute("UPDATE users SET role = 'client' WHERE role = 'user'")
 
