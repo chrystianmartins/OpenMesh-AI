@@ -55,9 +55,8 @@ def cosine_similarity(embedding_1: object, embedding_2: object) -> float | None:
     if norm_1 == 0 or norm_2 == 0:
         return None
 
-    return dot_product / (norm_1 * norm_2)
-
-
+    similarity = dot_product / (norm_1 * norm_2)
+    return float(similarity)
 
 
 def _extract_embedding(output: object) -> object:

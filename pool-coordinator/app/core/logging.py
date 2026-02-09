@@ -53,9 +53,9 @@ def configure_logging() -> None:
     root_logger.setLevel(getattr(logging, level_name, logging.INFO))
 
     if not root_logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(JsonFormatter())
-        root_logger.addHandler(handler)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(JsonFormatter())
+        root_logger.addHandler(stream_handler)
         return
 
     for handler in root_logger.handlers:
