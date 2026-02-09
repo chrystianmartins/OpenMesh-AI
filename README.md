@@ -13,6 +13,7 @@ Componentes:
 - `worker/` — CLI em Rust para registrar-se no pool, receber trabalho e reportar resultados.
 - `docs/` — documentação de protocolo, economia e operações.
 - Guia de instalação Ubuntu: `docs/install-ubuntu.md`
+- Tutorial operacional (pt-BR): `docs/tutorial-operacao-ptbr.md`
 - `scripts/` — utilitários de desenvolvimento.
 
 ## Token de uso (usage token)
