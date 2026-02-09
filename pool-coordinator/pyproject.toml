@@ -36,3 +36,7 @@ testpaths = ["tests"]
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
