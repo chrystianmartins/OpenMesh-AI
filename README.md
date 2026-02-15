@@ -1,52 +1,57 @@
 # OpenMesh-AI
 
-Monorepo base para um **pool operator** do ecossistema OpenMesh-AI.
+Base monorepo for a **pool operator** in the OpenMesh-AI ecosystem.
 
-## Visão geral
+## Overview
 
-O operador coordena workers para executar tarefas de inferência/distribuição e expõe uma camada de gateway para consumo externo.
+The operator coordinates workers to execute inference/distribution tasks
+and exposes a gateway layer for external consumption.
 
-Componentes:
+Components:
 
-- `pool-coordinator/` — API interna para coordenação de jobs, workers e estado do pool.
-- `pool-gateway/` — API de borda para clientes, autenticação e roteamento para o coordinator.
-- `worker/` — CLI em Rust para registrar-se no pool, receber trabalho e reportar resultados.
-- `docs/` — documentação de protocolo, economia e operações.
-- Guia de instalação Ubuntu: `docs/install-ubuntu.md`
-- Tutorial operacional (pt-BR): `docs/tutorial-operacao-ptbr.md`
-- `scripts/` — utilitários de desenvolvimento.
+-   `pool-coordinator/` --- Internal API for job orchestration, workers,
+    and pool state.
+-   `pool-gateway/` --- Edge API for clients, authentication, and
+    routing to the coordinator.
+-   `worker/` --- Rust CLI to register with the pool, receive work, and
+    report results.
+-   `docs/` --- Protocol, economics, and operations documentation.
+-   Ubuntu installation guide: `docs/install-ubuntu.md`
+-   Operational tutorial (pt-BR): `docs/tutorial-operacao-ptbr.md`
+-   `scripts/` --- Development utilities.
 
-## Token de uso (usage token)
+## Usage Token
 
-O `usage token` representa crédito/consumo de capacidade computacional:
+The `usage token` represents credit / consumption of compute capacity:
 
-- clientes apresentam token para consumir capacidade do pool;
-- gateway valida e contabiliza consumo;
-- coordinator aplica políticas de alocação e limites;
-- worker executa tarefas e retorna métricas para liquidação.
+-   clients present a token to consume pool capacity;
+-   the gateway validates and accounts for usage;
+-   the coordinator applies allocation policies and limits;
+-   the worker executes tasks and returns metrics for settlement.
 
-> Nesta fase o token está documentado conceitualmente em `docs/economics.md`.
+> At this stage the token is documented conceptually in
+> `docs/economics.md`.
 
 ## Quickstart
 
-```bash
+``` bash
 make up
 make logs
 ```
 
-Healthchecks:
+Health checks:
 
-- Coordinator: `GET http://localhost:8001/health`
-- Gateway: `GET http://localhost:8002/health`
+-   Coordinator: `GET http://localhost:8001/health`
+-   Gateway: `GET http://localhost:8002/health`
 
-## Desenvolvimento
+## Development
 
-```bash
+``` bash
 make fmt
 make lint
 make test
 ```
 
-## Licença
+## License
 
 Apache-2.0 (`LICENSE`).
