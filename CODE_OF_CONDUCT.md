@@ -1,17 +1,20 @@
 # Code of Conduct
 
-Este projeto adota um padrão de convivência baseado em respeito, colaboração e inclusão.
+This project adopts a standard of interaction based on respect,
+collaboration, and inclusion.
 
-## Nossos compromissos
+## Our Commitments
 
-- Comunicação respeitosa e objetiva.
-- Feedback técnico construtivo.
-- Tolerância zero para assédio, discriminação e comportamento abusivo.
+-   Respectful and objective communication.
+-   Constructive technical feedback.
+-   Zero tolerance for harassment, discrimination, or abusive behavior.
 
-## Reportar incidentes
+## Reporting Incidents
 
-Relate violações para os mantenedores via canal privado indicado em `SECURITY.md`.
+Report violations to the maintainers through the private channel
+indicated in `SECURITY.md`.
 
-## Escopo
+## Scope
 
-Aplica-se a todos os espaços do projeto: issues, PRs, discussões e canais oficiais.
+This applies to all project spaces: issues, pull requests, discussions,
+and official channels.
