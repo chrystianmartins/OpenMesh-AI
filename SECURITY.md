@@ -1,20 +1,21 @@
 # Security Policy
 
-## Reporte responsável
+## Responsible Disclosure
 
-Para reportar vulnerabilidades, envie detalhes para:
+To report vulnerabilities, please send details to:
 
-- `security@openmesh-ai.local` (placeholder para ambiente inicial)
+-   `security@openmesh-ai.local` (placeholder for the initial
+    environment)
 
-Inclua:
+Include:
 
-- descrição do problema
-- impacto potencial
-- passos para reprodução
-- sugestão de mitigação (se houver)
+-   description of the issue
+-   potential impact
+-   steps to reproduce
+-   mitigation suggestion (if any)
 
-## Escopo inicial
+## Initial Scope
 
-- APIs FastAPI (`pool-coordinator`, `pool-gateway`)
-- worker CLI Rust
-- infraestrutura local (`docker-compose`)
+-   FastAPI services (`pool-coordinator`, `pool-gateway`)
+-   Rust worker CLI
+-   local infrastructure (`docker-compose`)
