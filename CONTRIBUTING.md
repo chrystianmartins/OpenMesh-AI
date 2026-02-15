@@ -1,23 +1,23 @@
 # Contributing
 
-Obrigado por contribuir com OpenMesh-AI.
+Thank you for contributing to OpenMesh-AI.
 
-## Fluxo recomendado
+## Recommended Workflow
 
-1. Crie branch a partir de `main`.
-2. Faça mudanças pequenas e focadas.
-3. Rode `make fmt lint test`.
-4. Abra PR com contexto, impacto e plano de validação.
+1.  Create a branch from `main`.
+2.  Make small, focused changes.
+3.  Run `make fmt lint test`.
+4.  Open a PR with context, impact, and a validation plan.
 
-## Padrões
+## Standards
 
-- Python: tipagem, `ruff`, `mypy`, `pytest`.
-- Rust: `cargo fmt`, `clippy`, `cargo test`.
-- Commits claros e atômicos.
+-   Python: typing, `ruff`, `mypy`, `pytest`.
+-   Rust: `cargo fmt`, `clippy`, `cargo test`.
+-   Clear and atomic commits.
 
-## PR checklist
+## PR Checklist
 
-- [ ] Código formatado
-- [ ] Lint sem erros
-- [ ] Testes atualizados/passando
-- [ ] Docs atualizadas
+-   [ ] Code formatted
+-   [ ] Lint passing
+-   [ ] Tests updated/passing
+-   [ ] Docs updated
